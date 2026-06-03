@@ -5,12 +5,17 @@ import { engine } from "express-handlebars";
 import path from "path";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import cookieParser from "cookie-parser";
+import passport from "passport";
 
 import productsRouter from "./routes/products.router.js";
 import cartsRouter from "./routes/carts.router.js";
 import viewsRouter from "./routes/views.router.js";
+import sessionsRouter from "./routes/sessions.router.js";
+
 import ProductManager from "./managers/ProductManager.js";
 import CartManager from "./managers/CartManager.js";
+import { initializePassport } from "./config/passport.config.js";
 
 dotenv.config();
 
@@ -28,7 +33,11 @@ app.set("views", path.resolve("src/views"));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 app.use(express.static(path.resolve("src/public")));
+
+initializePassport();
+app.use(passport.initialize());
 
 app.set("io", io);
 app.set("productManager", productManager);
@@ -37,6 +46,7 @@ app.set("cartManager", cartManager);
 app.use("/", viewsRouter);
 app.use("/api/products", productsRouter);
 app.use("/api/carts", cartsRouter);
+app.use("/api/sessions", sessionsRouter);
 
 io.on("connection", async (socket) => {
   try {
