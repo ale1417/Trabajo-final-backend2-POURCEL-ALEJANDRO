@@ -22,3 +22,20 @@ export const generateToken = (user) => {
     },
   );
 };
+
+export const generatePasswordResetToken = (user) => {
+  return jwt.sign(
+    {
+      id: user._id,
+      email: user.email,
+    },
+    process.env.JWT_SECRET || "coderSecret",
+    {
+      expiresIn: "1h",
+    },
+  );
+};
+
+export const verifyPasswordResetToken = (token) => {
+  return jwt.verify(token, process.env.JWT_SECRET || "coderSecret");
+};

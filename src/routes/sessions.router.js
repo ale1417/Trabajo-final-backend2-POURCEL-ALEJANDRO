@@ -1,10 +1,21 @@
 import { Router } from "express";
 import passport from "passport";
-import { UserModel } from "../models/User.model.js";
+
+import UserCurrentDTO from "../dto/UserCurrent.dto.js";
+import UserRepository from "../repositories/User.repository.js";
 import { Cart } from "../models/Cart.model.js";
-import { createHash, isValidPassword, generateToken } from "../utils.js";
+import { transporter } from "../config/mailer.config.js";
+
+import {
+  createHash,
+  isValidPassword,
+  generateToken,
+  generatePasswordResetToken,
+  verifyPasswordResetToken,
+} from "../utils.js";
 
 const router = Router();
+const userRepository = new UserRepository();
 
 router.post("/register", async (req, res) => {
   try {
@@ -17,7 +28,7 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    const userExists = await UserModel.findOne({ email });
+    const userExists = await userRepository.getUserByEmail(email);
 
     if (userExists) {
       return res.status(400).json({
@@ -28,7 +39,7 @@ router.post("/register", async (req, res) => {
 
     const newCart = await Cart.create({ products: [] });
 
-    const newUser = await UserModel.create({
+    const newUser = await userRepository.createUser({
       first_name,
       last_name,
       email,
@@ -71,18 +82,9 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const user = await UserModel.findOne({ email });
+    const user = await userRepository.getUserByEmail(email);
 
-    if (!user) {
-      return res.status(401).json({
-        status: "error",
-        message: "Credenciales inválidas",
-      });
-    }
-
-    const validPassword = isValidPassword(user, password);
-
-    if (!validPassword) {
+    if (!user || !isValidPassword(user, password)) {
       return res.status(401).json({
         status: "error",
         message: "Credenciales inválidas",
@@ -114,11 +116,118 @@ router.get(
   "/current",
   passport.authenticate("jwt", { session: false }),
   async (req, res) => {
+    const userDTO = new UserCurrentDTO(req.user);
+
     res.json({
       status: "success",
-      payload: req.user,
+      payload: userDTO,
     });
   },
 );
+
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        status: "error",
+        message: "El email es obligatorio",
+      });
+    }
+
+    const user = await userRepository.getUserByEmail(email);
+
+    if (!user) {
+      return res.status(404).json({
+        status: "error",
+        message: "No existe un usuario con ese email",
+      });
+    }
+
+    const resetToken = generatePasswordResetToken(user);
+    const resetLink = `${process.env.FRONT_URL}/reset-password/${resetToken}`;
+
+    await transporter.sendMail({
+      from: `Ecommerce Backend <${process.env.GMAIL_USER}>`,
+      to: email,
+      subject: "Restablecer contraseña",
+      html: `
+        <div>
+          <h2>Restablecer contraseña</h2>
+          <p>Hacé click en el botón para restablecer tu contraseña.</p>
+          <p>Este enlace expira en 1 hora.</p>
+          <a href="${resetLink}" style="
+            display:inline-block;
+            padding:10px 16px;
+            background:#2563eb;
+            color:white;
+            text-decoration:none;
+            border-radius:6px;
+          ">
+            Restablecer contraseña
+          </a>
+        </div>
+      `,
+    });
+
+    res.json({
+      status: "success",
+      message: "Correo de recuperación enviado",
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: "Error al enviar correo de recuperación",
+      detail: error.message,
+    });
+  }
+});
+
+router.post("/reset-password/:token", async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword) {
+      return res.status(400).json({
+        status: "error",
+        message: "La nueva contraseña es obligatoria",
+      });
+    }
+
+    const decoded = verifyPasswordResetToken(token);
+    const user = await userRepository.getUserByEmail(decoded.email);
+
+    if (!user) {
+      return res.status(404).json({
+        status: "error",
+        message: "Usuario no encontrado",
+      });
+    }
+
+    if (isValidPassword(user, newPassword)) {
+      return res.status(400).json({
+        status: "error",
+        message: "No podés usar la misma contraseña anterior",
+      });
+    }
+
+    const hashedPassword = createHash(newPassword);
+
+    await userRepository.updatePassword(user._id, hashedPassword);
+
+    res.json({
+      status: "success",
+      message: "Contraseña actualizada correctamente",
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "error",
+      message: "Token inválido o expirado",
+      detail: error.message,
+    });
+  }
+});
 
 export default router;

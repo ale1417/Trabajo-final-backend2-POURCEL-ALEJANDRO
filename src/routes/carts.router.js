@@ -1,3 +1,5 @@
+import passport from "passport";
+import { authorization } from "../middlewares/authorization.middleware.js";
 import { Router } from "express";
 import CartManager from "../managers/CartManager.js";
 
@@ -35,34 +37,70 @@ router.get("/:cid", async (req, res) => {
   }
 });
 
-router.post("/:cid/product/:pid", async (req, res) => {
-  try {
-    const result = await cartManager.addProductToCart(
-      req.params.cid,
-      req.params.pid,
-    );
+router.post(
+  "/:cid/product/:pid",
+  passport.authenticate("jwt", { session: false }),
+  authorization("user"),
+  async (req, res) => {
+    try {
+      const result = await cartManager.addProductToCart(
+        req.params.cid,
+        req.params.pid,
+      );
 
-    if (result === null) {
-      return res.status(404).json({
-        error: "Cart not found",
+      if (result === null) {
+        return res.status(404).json({
+          error: "Cart not found",
+        });
+      }
+
+      if (result === false) {
+        return res.status(404).json({
+          error: "Product not found",
+        });
+      }
+
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({
+        error: "Internal error",
+        detail: err.message,
       });
     }
+  },
+);
+router.post(
+  "/:cid/purchase",
+  passport.authenticate("jwt", { session: false }),
+  authorization("user"),
+  async (req, res) => {
+    try {
+      const result = await cartManager.purchaseCart(
+        req.params.cid,
+        req.user.email,
+      );
 
-    if (result === false) {
-      return res.status(404).json({
-        error: "Product not found",
+      if (!result) {
+        return res.status(404).json({
+          status: "error",
+          message: "Cart not found",
+        });
+      }
+
+      if (result.status === "error") {
+        return res.status(400).json(result);
+      }
+
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({
+        status: "error",
+        message: "Error al finalizar la compra",
+        detail: err.message,
       });
     }
-
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({
-      error: "Internal error",
-      detail: err.message,
-    });
-  }
-});
-
+  },
+);
 router.delete("/:cid/products/:pid", async (req, res) => {
   try {
     const result = await cartManager.deleteProductFromCart(
