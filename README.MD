@@ -394,7 +394,7 @@ FRONT_URL=http://localhost:8080
 ### 1. Clonar el repositorio
 
 ```bash
-git clone https://github.com/ale1417/Programaci-n-Backend-I---Entrega-2.git
+git clone https://github.com/ale1417/Trabajo-final-backend2-POURCEL-ALEJANDRO.git
 ```
 
 ### 2. Instalar dependencias
